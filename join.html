@@ -1029,7 +1029,7 @@ footer {
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
   import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-analytics.js";
   import { getAuth, createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-  import { getFirestore, doc, setDoc, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
+  import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyAdvM-qqfy5XXPNom8bRvVt4LXSG8818fw",
@@ -1046,17 +1046,6 @@ footer {
   const auth = getAuth(app);
   const db = getFirestore(app);
 
-  // Atomically claim the next CID from meta/cidCounter
-  async function claimNextCID() {
-    const counterRef = doc(db, 'meta', 'cidCounter');
-    return await runTransaction(db, async (tx) => {
-      const snap = await tx.get(counterRef);
-      const next = snap.exists() ? (snap.data().next || 1000001) : 1000001;
-      tx.set(counterRef, { next: next + 1 }, { merge: true });
-      return next;
-    });
-  }
-
   const form = document.getElementById('join-form') || document.querySelector('form');
   const submitButton = document.getElementById('send') || form?.querySelector('button[type="submit"]');
 
@@ -1065,11 +1054,16 @@ footer {
     if (!box) {
       box = document.createElement('div');
       box.id = 'form-message';
-      box.style.cssText = 'margin-top:16px;padding:12px 14px;border-radius:10px;font-size:14px;line-height:1.5;border:1px solid rgba(140,197,118,0.18);';
+      box.style.marginTop = '16px';
+      box.style.padding = '12px 14px';
+      box.style.borderRadius = '10px';
+      box.style.fontSize = '14px';
+      box.style.lineHeight = '1.5';
+      box.style.border = '1px solid rgba(140,197,118,0.18)';
       form.appendChild(box);
     }
     box.textContent = message;
-    box.style.background = isError ? 'rgba(220,68,68,0.12)' : 'rgba(140,197,118,0.12)';
+    box.style.background = isError ? 'rgba(220, 68, 68, 0.12)' : 'rgba(140,197,118,0.12)';
     box.style.borderColor = isError ? 'rgba(255,107,107,0.35)' : 'rgba(140,197,118,0.22)';
     box.style.color = isError ? '#ff8f8f' : '#cfecc8';
   };
@@ -1087,25 +1081,29 @@ footer {
   if (form) {
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (!form.checkValidity()) { form.reportValidity(); return; }
+
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
 
       const formData = new FormData(form);
       const firstName = (formData.get('firstname') || '').toString().trim();
-      const lastName  = (formData.get('lastname')  || '').toString().trim();
-      const email     = (formData.get('email')     || '').toString().trim();
-      const password  = (formData.get('password')  || '').toString();
-
+      const lastName = (formData.get('lastname') || '').toString().trim();
+      const email = (formData.get('email') || '').toString().trim();
+      const password = (formData.get('password') || '').toString();
       const payload = {
-        firstName, lastName,
+        firstName,
+        lastName,
         fullName: `${firstName} ${lastName}`.trim(),
         email,
-        ageRange:        (formData.get('yob')      || '').toString(),
-        country:         (formData.get('country')  || '').toString(),
-        stateOrProvince: (formData.get('state')    || '').toString().trim(),
-        reminderWord:    (formData.get('reminder') || '').toString().trim(),
-        region:          (formData.get('region')   || '').toString(),
-        division:        (formData.get('division') || '').toString(),
-        roleSelection:   (formData.get('rating')   || formData.get('role') || '').toString(),
+        ageRange: (formData.get('yob') || '').toString(),
+        country: (formData.get('country') || '').toString(),
+        stateOrProvince: (formData.get('state') || '').toString().trim(),
+        reminderWord: (formData.get('reminder') || '').toString().trim(),
+        region: (formData.get('region') || '').toString(),
+        division: (formData.get('division') || '').toString(),
+        roleSelection: (formData.get('rating') || formData.get('role') || '').toString(),
         agreedToPolicies: formData.get('agree') === 'on',
         source: 'skyhigh-join-form',
         createdAt: serverTimestamp(),
@@ -1125,20 +1123,24 @@ footer {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        await updateProfile(user, { displayName: payload.fullName || firstName || email });
+        await updateProfile(user, {
+          displayName: payload.fullName || firstName || email
+        });
+
         await sendEmailVerification(user);
 
-        // Assign a unique VATSIM-style CID
-        const cid = await claimNextCID();
-        payload.cid = cid;
+        await setDoc(doc(db, 'joinApplications', user.uid), {
+          uid: user.uid,
+          ...payload
+        });
 
-        await setDoc(doc(db, 'joinApplications', user.uid), { uid: user.uid, ...payload });
-
-        showMessage(`Account created! Your SkyHigh CID is: ${cid}. A verification email has been sent — please check your junk/spam folder.`, false);
+        showMessage('Account created successfully. We have sent a verification email to your address, please check junk and spam inboxes.', false);
         form.reset();
-        const divisionSelect = document.getElementById('division');
-        if (divisionSelect) divisionSelect.innerHTML = '<option value="">Choose...</option>';
 
+        const divisionSelect = document.getElementById('division');
+        if (divisionSelect) {
+          divisionSelect.innerHTML = '<option value="">Choose...</option>';
+        }
       } catch (error) {
         console.error('Registration failed:', error);
         showMessage(mapError(error.code), true);
