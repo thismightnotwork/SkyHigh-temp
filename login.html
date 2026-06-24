@@ -683,12 +683,11 @@ footer {
   <script type="module">
     import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
     import {
-      getAuth, onAuthStateChanged,
-      signInWithEmailAndPassword, signOut
+      getAuth,
+      onAuthStateChanged,
+      signInWithEmailAndPassword,
+      signOut
     } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-    import {
-      getFirestore, doc, getDoc, runTransaction
-    } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAdvM-qqfy5XXPNom8bRvVt4LXSG8818fw",
@@ -702,41 +701,25 @@ footer {
 
     const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
     const auth = getAuth(app);
-    const db = getFirestore(app);
 
-    // Claim next CID atomically — or return existing one
-    async function ensureCID(uid) {
-      const userRef = doc(db, 'joinApplications', uid);
-      const snap = await getDoc(userRef);
-      if (snap.exists() && snap.data().cid) return snap.data().cid;
+    const form = document.getElementById('login-form');
+    const emailInput = document.getElementById('login-email');
+    const passwordInput = document.getElementById('login-password');
+    const submitBtn = document.getElementById('login-submit');
+    const msgBox = document.getElementById('login-message');
 
-      const counterRef = doc(db, 'meta', 'cidCounter');
-      return await runTransaction(db, async (tx) => {
-        const counterSnap = await tx.get(counterRef);
-        const next = counterSnap.exists() ? (counterSnap.data().next || 1000001) : 1000001;
-        tx.set(counterRef, { next: next + 1 }, { merge: true });
-        tx.update(userRef, { cid: next });
-        return next;
-      });
-    }
-
-    const form        = document.getElementById('login-form');
-    const emailInput  = document.getElementById('login-email');
-    const passInput   = document.getElementById('login-password');
-    const submitBtn   = document.getElementById('login-submit');
-    const msgBox      = document.getElementById('login-message');
-
-    function showMsg(text, type) {
+    function showMessage(text, type) {
       if (!msgBox) return;
       msgBox.textContent = text;
       msgBox.hidden = false;
-      msgBox.className = type === 'error' ? 'error' : 'success';
+      msgBox.className = '';
+      if (type === 'error') msgBox.classList.add('error');
+      if (type === 'success') msgBox.classList.add('success');
     }
 
-    // If already authenticated, ensure CID then redirect
-    onAuthStateChanged(auth, async (user) => {
+    // If already logged in, redirect away – this ensures logged-in users don't see the login form.
+    onAuthStateChanged(auth, (user) => {
       if (user) {
-        try { await ensureCID(user.uid); } catch(e) { console.warn('CID ensure failed', e); }
         window.location.replace('profile.html');
       }
     });
@@ -744,28 +727,27 @@ footer {
     if (form) {
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const email    = emailInput.value.trim();
-        const password = passInput.value;
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
         if (!email || !password) return;
 
         try {
           submitBtn.disabled = true;
           submitBtn.textContent = 'Logging in...';
-
-          const credential = await signInWithEmailAndPassword(auth, email, password);
-
-          // Ensure CID exists — handles legacy accounts created before this feature
-          try { await ensureCID(credential.user.uid); } catch(e) { console.warn('CID ensure failed', e); }
-
-          showMsg('Login successful. Redirecting...', 'success');
-          setTimeout(() => window.location.replace('profile.html'), 800);
-
+          await signInWithEmailAndPassword(auth, email, password);
+          showMessage('Login successful. Redirecting...', 'success');
+          setTimeout(() => {
+            window.location.replace('profile.html');
+          }, 800);
         } catch (err) {
           console.error(err);
           let msg = 'Login failed. Please check your details.';
-          if (['auth/invalid-credential','auth/wrong-password'].includes(err.code)) msg = 'Incorrect email or password.';
-          else if (err.code === 'auth/user-not-found') msg = 'No account found with that email.';
-          showMsg(msg, 'error');
+          if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+            msg = 'Incorrect email or password.';
+          } else if (err.code === 'auth/user-not-found') {
+            msg = 'No account found with that email.';
+          }
+          showMessage(msg, 'error');
         } finally {
           submitBtn.disabled = false;
           submitBtn.textContent = 'Log in';
@@ -773,9 +755,14 @@ footer {
       });
     }
 
+    // Optional: global logout helper if needed
     window.skyhighLogout = async () => {
-      try { await signOut(auth); window.location.replace('index.html'); }
-      catch (err) { console.error('Failed to sign out', err); }
+      try {
+        await signOut(auth);
+        window.location.replace('index.html');
+      } catch (err) {
+        console.error('Failed to sign out', err);
+      }
     };
   </script>
 </body>
